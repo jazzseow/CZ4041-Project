@@ -1,2 +1,2 @@
 # CZ4041-Project
-Preprocessing of Images before input into NN
+Preprocessing of Images before input into CNN
