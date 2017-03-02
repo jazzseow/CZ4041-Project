@@ -4,7 +4,6 @@ import glob
 import time
 import shutil
 import os
-import matplotlib.pyplot as plt
 from natsort import natsorted
 
 def load_cv2_images():
@@ -28,7 +27,6 @@ def load_cv2_images():
 		masks[patient_id].append(cv2.imread(p[:-4]+'_mask.tif', 0))
 		img_cases[patient_id].append(p)
 
-
 	for i in range(47):
 		imgs[i+1] = np.array(imgs[i+1])
 		masks[i+1] = np.array(masks[i+1])
@@ -36,24 +34,80 @@ def load_cv2_images():
 	return imgs, masks, img_cases
 
 
-def find_pairs(cimg, cmask, cimg_case, imgs, masks, img_cases, cindex, matches):
-	for i, (img, mask, img_case) in enumerate(zip(imgs, masks, img_cases)):
-		if i != cindex and np.abs(cimg - img).sum() < 23000000 and (cmask.sum() != 0) == (mask.sum() == 0):
-			matches.append([cimg_case, img_case])
-	return matches
+def add_white_find_pairs(imgs, masks, img_cases):
+	matches = []
+	for j in range(47):
+		for cindex, (cimg, cmask, cimg_case) in enumerate(zip(imgs[j+1], masks[j+1], img_cases[j+1])):
+			for i, (img, mask, img_case) in enumerate(zip(imgs[j+1], masks[j+1], img_cases[j+1])):
+				if np.abs(cimg - img).sum() < 23000000 and i != cindex and \
+				cmask.sum() != 0 and mask.sum() == 0 and \
+				([img_case, cimg_case] not in matches):
+					matches.append([cimg_case, img_case])
+	
+	# get only unique path destinations
+	unique_matches = []
+	flag = True
+	for pair in matches:
+		for unique_pair in unique_matches:
+			if pair[1] == unique_pair[1]:
+				flag = False
+				break
+		if flag == True:
+			unique_matches.append(pair)
+		else:
+			flag = True
+			
+	for pair in unique_matches:
+		os.remove(pair[1])
+		shutil.copy2(pair[0], pair[1])
+
+def add_black_find_pairs(imgs, masks, img_cases):
+	matches = []
+	for j in range(47):
+		for cindex, (cimg, cmask, cimg_case) in enumerate(zip(imgs[j+1], masks[j+1], img_cases[j+1])):
+			for i, (img, mask, img_case) in enumerate(zip(imgs[j+1], masks[j+1], img_cases[j+1])):
+				if np.abs(cimg - img).sum() < 23000000 and i != cindex and \
+				cmask.sum() == 0 and mask.sum() != 0 and \
+				([img_case, cimg_case] not in matches):
+					matches.append([cimg_case, img_case])
+	
+	# get only unique path destinations
+	unique_matches = []
+	flag = True
+	for pair in matches:
+		for unique_pair in unique_matches:
+			if pair[1] == unique_pair[1]:
+				flag = False
+				break
+		if flag == True:
+			unique_matches.append(pair)
+		else:
+			flag = True
+	
+	for pair in unique_matches:
+		os.remove(pair[1])
+		shutil.copy2(pair[0], pair[1])
+		
+def destroy_find_pairs(imgs, masks, img_cases):
+	matches = []
+	for j in range(47):
+		for cindex, (cimg, cmask, cimg_case) in enumerate(zip(imgs[j+1], masks[j+1], img_cases[j+1])):
+			for i, (img, mask, img_case) in enumerate(zip(imgs[j+1], masks[j+1], img_cases[j+1])):
+				if np.abs(cimg - img).sum() < 23000000 and i != cindex and \
+				cmask.sum() == 0 and mask.sum() != 0:
+					matches.append([cimg_case, img_case])
+	
+	# flatten list of list
+	flat = [element for pair in matches for element in pair]
+	unique_matches = []
+	for element in flat:
+		if element not in unique_matches:
+			unique_matches.append(element)
+
+	for pair in unique_matches:
+		os.remove(pair)
+	
 
 imgs, masks, img_cases = load_cv2_images()
-matches = []
-for j in range(47):
-	for i, (img, mask, img_case) in enumerate(zip(imgs[j+1], masks[j+1], img_cases[j+1])):
-		a= time.tiime()
-		matches = find_pairs(img, mask, img_case, imgs[j+1], masks[j+1], img_cases[j+1], i, matches)
-		print(time.time() - a)
-
-print(len(matches))
-'''
-for pair in matches:
-	os.remove(pair[1])
-	shutil.copy2(pair[0], pair[1])
-'''
+destroy_find_pairs(imgs, masks, img_cases)
 
