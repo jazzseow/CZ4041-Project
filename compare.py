@@ -50,7 +50,10 @@ for j in range(47):
 		matches = find_pairs(img, mask, img_case, imgs[j+1], masks[j+1], img_cases[j+1], i, matches)
 		print(time.time() - a)
 
+print(len(matches))
+'''
 for pair in matches:
 	os.remove(pair[1])
 	shutil.copy2(pair[0], pair[1])
+'''
 
