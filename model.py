@@ -1,27 +1,29 @@
 import os
 import numpy as np
+from cv2 import Canny
+from scipy.ndimage import gaussian_filter as sharp
 from skimage.transform import resize
 from skimage.io import imread
+from skimage.exposure import equalize_hist as contrast
 from keras.models import Model
 from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D
 from keras.optimizers import Adam
 from keras import backend as K
 from itertools import chain
+from matplotlib import pyplot as plt
 
 K.set_image_data_format('channels_last')
 
 # hyperparameters
 input_dim = (96, 96, 1)
 conv_depth = [1, 32, 64, 128, 256, 512] # first index reserved for final output
-filter_dim = ['nil', (1, 1), (2, 2), (3, 3)] # index refers directly to filter size
-pool_dim = (2, 2)
-learning_rate = 1e-4
+filter_dim = ['nil', (1, 1), (2, 2), (3, 3), (4, 4)] # index refers directly to filter size
+#pool_dim = (4, 4)
+learning_rate = 1e-5
 batch = 32
-epochs = 1
+epochs = 3
 activation = ['sigmoid', 'relu'] # first index reserved for final output
 zero_pad = 'same'
-loss_measurement = 'binary_crossentropy'
-output_evaluation = 'accuracy'
 
 # fix random seed for reproducibility and initialise dataset
 np.random.seed(1)
@@ -42,14 +44,14 @@ def preprocess():
 	for image_name in image_names_train:
 		if 'mask' in image_name: continue
 		image_mask_name = image_name.split('.')[0] + '_mask.tif'
-		imgs[i] = np.array([imread(os.path.join('ultrasound/train/', image_name), as_grey=True)])
+		imgs[i] = contrast(np.array([imread(os.path.join('ultrasound/train/', image_name), as_grey=True)]))
 		imgs_mask[i] = np.array([imread(os.path.join('ultrasound/train/', image_mask_name), as_grey=True)])
 		i += 1
 
 	i = 0
 	for image_test_name in image_names_test:
 		imgs_id[i] = int(image_test_name.split('.')[0])
-		imgs_test[i] = np.array([imread(os.path.join('ultrasound/test/', image_test_name), as_grey=True)])
+		imgs_test[i] = contrast(np.array([imread(os.path.join('ultrasound/test/', image_test_name), as_grey=True)]))
 		i += 1
 
 	X_train = np.ndarray((imgs.shape[0], input_dim[0], input_dim[1]), dtype=np.uint8)
@@ -78,6 +80,12 @@ def preprocess():
 
 	return X_train, y_train, X_test, imgs_id
 
+# the dice coefficient calculation
+def dice_loss(ground_truth, prediction):
+    ground_truth = K.flatten(ground_truth)
+    prediction = K.flatten(prediction)
+    return -(2. * K.sum(ground_truth * prediction) + 1) / (K.sum(ground_truth) + K.sum(prediction) + 1)
+
 def model(X_train, y_train, X_test):
 	inputs = Input(input_dim)
 	conv1 = Conv2D(conv_depth[1], filter_dim[3], activation=activation[1], padding=zero_pad)(inputs)
@@ -85,6 +93,7 @@ def model(X_train, y_train, X_test):
 	pool1 = MaxPooling2D(pool_size=filter_dim[2])(conv1)
 	conv2 = Conv2D(conv_depth[2], filter_dim[3], activation=activation[1], padding=zero_pad)(pool1)
 	conv2 = Conv2D(conv_depth[2], filter_dim[3], activation=activation[1], padding=zero_pad)(conv2)
+	'''
 	pool2 = MaxPooling2D(pool_size=filter_dim[2])(conv2)
 	conv3 = Conv2D(conv_depth[3], filter_dim[3], activation=activation[1], padding=zero_pad)(pool2)
 	conv3 = Conv2D(conv_depth[3], filter_dim[3], activation=activation[1], padding=zero_pad)(conv3)
@@ -94,7 +103,7 @@ def model(X_train, y_train, X_test):
 	pool4 = MaxPooling2D(pool_size=filter_dim[2])(conv4)
 	conv5 = Conv2D(conv_depth[5], filter_dim[3], activation=activation[1], padding=zero_pad)(pool4)
 	conv5 = Conv2D(conv_depth[5], filter_dim[3], activation=activation[1], padding=zero_pad)(conv5)
-	unpool4 = concatenate([UpSampling2D(size=(2,2))(conv5), conv4], axis=3)
+	unpool4 = concatenate([UpSampling2D(size=filter_dim[2])(conv5), conv4], axis=3)
 	deconv5 = Conv2D(conv_depth[4], filter_dim[3], activation=activation[1], padding=zero_pad)(unpool4)
 	deconv5 = Conv2D(conv_depth[4], filter_dim[3], activation=activation[1], padding=zero_pad)(deconv5)
 	unpool3 = concatenate([UpSampling2D(size=filter_dim[2])(deconv5), conv3], axis=3)
@@ -103,12 +112,13 @@ def model(X_train, y_train, X_test):
 	unpool2 = concatenate([UpSampling2D(size=filter_dim[2])(deconv4), conv2], axis=3)
 	deconv3 = Conv2D(conv_depth[2], filter_dim[3], activation=activation[1], padding=zero_pad)(unpool2)
 	deconv3 = Conv2D(conv_depth[2], filter_dim[3], activation=activation[1], padding=zero_pad)(deconv3)
-	unpool1 = concatenate([UpSampling2D(size=filter_dim[2])(deconv3), conv1], axis=3)
+	'''
+	unpool1 = concatenate([UpSampling2D(size=filter_dim[2])(conv2), conv1], axis=3)
 	deconv2 = Conv2D(conv_depth[1], filter_dim[3], activation=activation[1], padding=zero_pad)(unpool1)
 	deconv2 = Conv2D(conv_depth[1], filter_dim[3], activation=activation[1], padding=zero_pad)(deconv2)
 	deconv1 = Conv2D(conv_depth[0], filter_dim[1], activation=activation[0])(deconv2)
 	model = Model(inputs=[inputs], outputs=[deconv1])
-	model.compile(optimizer=Adam(lr=learning_rate), loss=loss_measurement, metrics=[output_evaluation])
+	model.compile(optimizer=Adam(lr=learning_rate), loss=dice_loss, metrics=['accuracy'])
 
 	# train model
 	model.fit(X_train, y_train, batch_size=batch, nb_epoch=epochs, verbose=1, shuffle=True, validation_split=0.2)
@@ -117,16 +127,15 @@ def model(X_train, y_train, X_test):
 	return model.predict(X_test, verbose=1)
 
 def save(predict, ids):
+	file = open('submission.csv', 'w+')
+	file.write('img,pixels\n')
+
 	argsort = np.argsort(ids)
 	ids = ids[argsort]
 	predict = predict[argsort]
 
 	total = predict.shape[0]
-
-	ids = []
-	pixels = []
 	for i in range(total):
-		pixel = ''
 		img = predict[i, 0]
 		img = img.astype('float32')
 		img = (img > 0.5).astype(np.uint8)
@@ -134,21 +143,15 @@ def save(predict, ids):
 
 		x = img.transpose().flatten()
 		y = np.where(x > 0)[0]
-		if len(y) < 10:  pixel = ''
-		else:
-			z = np.where(np.diff(y) > 1)[0]
-			start = np.insert(y[z+1], 0, y[0])
-			end = np.append(y[z], y[-1])
-			length = end - start
-			res = [[s+1, l+1] for s, l in zip(list(start), list(length))]
-			res = list(chain.from_iterable(res))
-			pixel = ' '.join([str(r) for r in res])
-
-		pixels.append(pixel)
-
-	file = open('submission.csv', 'w+')
-	file.write('img,pixels\n' + '\n')
-	for i in range(total): file.write(str(ids[i]) + ',' + pixels[i] + '\n')
+		if len(y) < 10:
+			file.write(str(ids[i]) + ',\n')
+			continue
+		z = np.where(np.diff(y) > 1)[0]
+		start = np.insert(y[z+1], 0, y[0])
+		length = np.append(y[z], y[-1]) - start
+		res = list(chain.from_iterable([[s+1, l+1] for s, l in zip(list(start), list(length))]))
+		pixel = ' '.join([str(r) for r in res])
+		file.write(str(ids[i]) + ',' + pixel + '\n')
 
 X_train, y_train, X_test, id = preprocess() # load the preprocessed dataset
 predict = model(X_train, y_train, X_test) # get prediction
