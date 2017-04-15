@@ -40,17 +40,16 @@ def preprocess():
 	
 	i = 0
 	for image_name in image_names_train:
-		if 'mask' in image_name:
-			continue
+		if 'mask' in image_name: continue
 		image_mask_name = image_name.split('.')[0] + '_mask.tif'
-		imgs[i] = np.array([imread(os.path.join(train_data_path, image_name), as_grey=True)])
-		imgs_mask[i] = np.array([imread(os.path.join(train_data_path, image_mask_name), as_grey=True)])
+		imgs[i] = np.array([imread(os.path.join('ultrasound/train/', image_name), as_grey=True)])
+		imgs_mask[i] = np.array([imread(os.path.join('ultrasound/train/', image_mask_name), as_grey=True)])
 		i += 1
 		
 	i = 0
 	for image_name in image_names_test:
 		imgs_id[i] = int(image_name.split('.')[0])
-		imgs_test[i] = np.array([imread(os.path.join(train_data_path, image_name), as_grey=True)])
+		imgs_test[i] = np.array([imread(os.path.join('ultrasound/test/', image_name), as_grey=True)])
 		i += 1
 		
 	X_train = np.ndarray((imgs.shape[0], input_dim[0:2]), dtype=np.uint8)
@@ -72,9 +71,9 @@ def preprocess():
 	mean = np.mean(X_train)
 	std = np.std(X_train)
 	
-    X_train = (X_train - mean) / std
-    y_train /= 255.
-    X_test = (X_test - mean) / std
+	X_train = (X_train - mean) / std
+	y_train /= 255.
+	X_test = (X_test - mean) / std
 	
 	return X_train, y_train, X_test, imgs_id
 
